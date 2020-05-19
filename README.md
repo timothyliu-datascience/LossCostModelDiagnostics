@@ -14,4 +14,7 @@ Metrics include -
 * Gini Index
 * value of lift 
 
-Also producing diagnostics charts including Lorenz Curve, Lift Chart, and "The Effect of Selecting Lower Relativities" graph.
+Also producing diagnostics charts including -
+* Lorenz Curve
+* Lift Chart
+* "The Effect of Selecting Lower Relativities" Chart
