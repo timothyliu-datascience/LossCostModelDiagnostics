@@ -1,5 +1,5 @@
 # Loss Cost Model Diagnostics
-Functions to produce diagnostic metrics for validating Loss Cost Models. Metrics include -
+Functions to produce diagnostic metrics for validating Loss Cost Models widely used in P&C Insurance. Metrics include -
 
 * WMSE
 * Psuedo R^2
@@ -12,3 +12,5 @@ Functions to produce diagnostic metrics for validating Loss Cost Models. Metrics
 * BIC
 * Gini Index
 * value of lift 
+
+Also producing charts including Lorenz Curve, Lift Chart, and "The Effect of Selecting Lower Relativities" graph.
