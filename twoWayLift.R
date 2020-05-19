@@ -85,18 +85,18 @@ two_way_lift <- function(actual,pred_new1, pred_new2, weight = rep(1,length(actu
  
     dd$ratio <- dd$pred_new1 / dd$pred_new2
 
-    o<- order(dd$ratio)
+    o <- order(dd$ratio)
 
-    dd<-dd[o,]
+    dd <-dd[o,]
 
-    n = nrow(dd)
+    n <- nrow(dd)
 
     dd$cumsum <- cumsum(dd$weight)
     tiles <- ceiling((dd$cumsum / dd$cumsum[n]) * tile)
    
    #take care of unassigned last decile due to rounding issue
    if (tiles[n] == 0) {
-           tiles[n]=tile
+           tiles[n] <- tile
     }
    dd$tiles<- tiles
    ddx <- split(dd, dd$tiles)
@@ -114,18 +114,18 @@ two_way_lift <- function(actual,pred_new1, pred_new2, weight = rep(1,length(actu
    theory_pred_new1 <-  theory_pred_new1 / mean1 
    theory_pred_new2 <-  theory_pred_new2 / mean2 
 
-   pct<-seq(1:tile)
+   pct <- seq(1:tile)
 
-   if(plot==TRUE)
+   if(plot == TRUE)
        { 
        windows()
        plot(pct, theory_pred_new2, xlim = c(1,tile), 
-                           ylim=c(0,max(theory_pred_new1, theory_pred_new2) ), 
-                           xlab= 'Decile',
-                           ylab= 'LR Relativity', 
+                           ylim = c(0,max(theory_pred_new1, theory_pred_new2) ), 
+                           xlab = 'Decile',
+                           ylab = 'LR Relativity', 
                            main = 'Two way lift chart: Model 1 vs. Model 2',
-                           type="n",
-       lab=c(10,5,7)
+                           type = "n",
+                           lab  = c(10,5,7)
      )
        abline(h=1)
        lines(pct, theory_pred_new1, lty =1, lwd=1, col='blue')
