@@ -1,413 +1,3 @@
-########################################
-# Program Name:   twoWayLift.R
-# Project Name:   Loss Cost Diagnostics
-# 
-# Purpose: Create two way Lift Charts
-#
-# Data Description: Simulated Tweedie data
-#
-# References:  
-#
-# Usage: See function inputs and outputs 
-########################################
-# input is 4 vectors of equal length, number of tiles and a boolean
-    # actual is the observed loss costs
-    # pred_new1 is the proposed loss cost predictions based on model 1
-    # pred_new2 is the proposed loss cost predictions based on model 2
-    # weight is exposures, default to 1
-    # tile is number of tiles requested
-    # plot is TRUE of FALSE
-    
-    # Optional Inputs:
-    #    policy_id: a vector that contains policy numbers
-    #                set by default to NULL
-    #    rbl: TRUE if the predictions should be rebalanced
-    #               to have the same average as the actual values
-    #         FALSE if the predictions should not be rebalanced
-
-# output is a two-waylift chart plot and a data frame of lift curve values
-
-two_way_lift <- function(actual,pred_new1, pred_new2, weight = rep(1,length(actual)), tile = 10, policy_id=NULL, rbl=TRUE, plot=TRUE) { 
-    # Returns a data frame of lift curves values
-    # 
-    # Inputs: 
-    #  actual: a vector of actual values
-    #  pred_new1: a vector of predicted values based on model 1
-    #  pred_new2: a vector of predicted values based on model 2
-    #  weight: a vector of weights, default to 1
-    #  tile: number of tiles requested
-    
-    # Optional Inputs:
-    #    policy_id: a vector that contains policy numbers
-    #                set by default to NULL
-    #    rbl: TRUE if the predictions should be rebalanced
-    #         to have the same average as the actual values
-    #         FALSE if the predictions should not be rebalanced
-
-        ## run data prep code
-        # check that vectors are the same length
-        if(length(policy_id)==0){
-            if(!is_same_length(list(actual,pred_new1,pred_new2,weight))){
-                return("Error: Inputs are not the same length")
-            }
-        }
-        else{
-            if(!is_same_length(list(actual,pred_new1,pred_new2,weight,policy_id))){
-                return("Error: Inputs are not the same length")
-            }
-        }
-        
-        # rebalance predictions to match actuals if rbl is TRUE
-        if(rbl){
-            dd <- rebalance(actual,data.frame(pred_new1,pred_new2),weight)
-        }
-        else{
-            dd <- data.frame(actual,pred_new1,pred_new2,weight)
-        }
-
-        #summarize to policy level if that option is specified
-        if(length(policy_id)!=0){
-            actual <- dd$actual
-            pred_new1 <- dd$pred_new1
-            pred_new2 <- dd$pred_new2
-            weight <- dd$weight
-            dd <- policy_level(data.frame(actual,pred_new1,pred_new2),weight,policy_id)
-        }
- 
-    dd$ratio <- dd$pred_new1 / dd$pred_new2
-
-    o<- order(dd$ratio)
-
-    dd<-dd[o,]
-
-    n = nrow(dd)
-
-    dd$cumsum <- cumsum(dd$weight)
-    tiles <- ceiling((dd$cumsum / dd$cumsum[n]) * tile)
-   
-   #take care of unassigned last decile due to rounding issue
-   if (tiles[n] == 0) {
-           tiles[n]=tile
-    }
-
-   dd$tiles<- tiles
-
-   ddx <- split(dd, dd$tiles)
- 
-   m_1 <- sapply(ddx, function(z) weighted.mean(z$pred_new1, w = z$weight))
-   m_2 <- sapply(ddx, function(z) weighted.mean(z$pred_new2, w = z$weight)) 
-   m   <- sapply(ddx, function(z) weighted.mean(z$actual,w = z$weight))
- 
-
-   theory_pred_new1 <- (m / m_1)  
-   theory_pred_new2 <- (m / m_2)
-
-   mean1 <- mean(theory_pred_new1)
-   mean2 <- mean(theory_pred_new2)
-
-   theory_pred_new1 <-  theory_pred_new1 / mean1 
-   theory_pred_new2 <-  theory_pred_new2 / mean2
-
-   #abs_dist_pred1 <- abs(theory_pred_new1 - 1)
-   #abs_dist_pred2 <- abs(theory_pred_new2 - 1)
-   #sqr_dist_pred1 <- (theory_pred_new1 - 1) ^ 2
-   #sqr_dist_pred2 <- (theory_pred_new2 - 1) ^ 2
-
-   pct<-seq(1:tile)
-
-   if(plot==TRUE)
-       { 
-       windows()
-       plot(pct, theory_pred_new2, xlim = c(1,tile), 
-                           ylim=c(0,max(theory_pred_new1, theory_pred_new2) ), 
-                           xlab= 'Decile',
-                           ylab= 'LR Relativity', 
-                           main = 'Two way lift chart: Model 1 vs. Model 2',
-                           type="n",
-       lab=c(10,5,7)
-     )
-       abline(h=1)
-       lines(pct, theory_pred_new1, lty =1, lwd=1, col='blue')
-       lines(pct, theory_pred_new2, lty =2, lwd=2, col='red')
-       legend.txt <- c('Model 1', 'Model2')
-       legend("topleft", legend= legend.txt, 
-           col = c(1,2),
-           lty = c(1,2),
-           lwd = c(1,2),
-           bty = "o", cex = 0.8)
-       }
-
-    lrr1 <- theory_pred_new1
-    lrr2 <- theory_pred_new2
-    plot_values <- data.frame(pct,lrr1,lrr2)
-    return(plot_values)
- 
-}
-
-
-######################################
-# Program Name: meyers.R 
-# 
-# Purpose: Recreate diagnostics from Glenn Meyer's presentations
-#
-# Data Description: Simulated Tweedie data
-#
-# References: http://www.casact.org/education/annual/2007/handouts/meyers.ppt
-#
-# Usage: See function inputs and outputs
-# selective_underwriting()
-# adverse_selection() 
-# value_of_lift()
-#
-# Requirements: lattice
-#
-######################################
-#require(lattice)
-
-selective_underwriting <- function(actual,pred_new,pred_current,weight=rep(1,length(actual)),xvalues=c(.75,.80,.85,.90,.95),policy_id=NULL,rbl=TRUE,plot=TRUE)
-    {
-     # Returns values to create Selective Underwriting plot invented by Glenn Meyers
-        #     x :  plot values for the x-axis
-        #     lr_decrease: The decrease in loss ratio caused by selecting lower relativities
-        #    
-        # Plots "The Effect of Selecting Lower Relativite" graph
-        #
- # Inputs:
- #  actual: a vector of actual values
- #  pred_new: a vector of predicted values
- #  pred_current: a vector of baseline predictions
-       
- # Optional Inputs:
- #  weight: a vector of weights set to a vector
- #          of 1's by default
- #  xvalues: A vector of the percent of items selected.  Plotted on the x-axis
- #  policy_id: a vector that contains policy numbers
- #       set by default to NULL
- #  rbl: TRUE if the predictions should be rebalanced
- #       to have the same average as the actual values
- #       FALSE if the predictions should not be rebalanced
- #  plot: TRUE if a plot should be produced
- #        FALSE if the plot should be surpressed
-
-        ## run data prep code
-        # check that vectors are the same length
-        if(length(policy_id)==0){
-            if(!is_same_length(list(actual,pred_new,pred_current,weight))){
-                return("Error: Inputs are not the same length")
-            }
-        }
-        else{
-            if(!is_same_length(list(actual,pred_new,pred_current,weight,policy_id))){
-                return("Error: Inputs are not the same length")
-            }
-        }
-        
-        # rebalance predictions to match actuals if rbl is TRUE
-        if(rbl){
-            dd <- rebalance(actual,data.frame(pred_new,pred_current),weight)
-        }
-        else{
-            dd <- data.frame(actual,pred_new,pred_current,weight)
-        }
-
-        #summarize to policy level if that option is specified
-        if(length(policy_id)!=0){
-            actual <- dd$actual
-            pred_new <- dd$pred_new
-            pred_current <- dd$pred_current
-            weight <- dd$weight
-            dd <- policy_level(data.frame(actual,pred_new,pred_current),weight,policy_id)
-        }
-
-    # create meyers vars
-    dd$relativity <- dd$pred_new / dd$pred_current
-    dd$wa <- dd$actual*dd$weight 
-    dd$wc <- dd$pred_current*dd$weight
-    dd_sorted_asc <- dd[order(dd$relativity),]
-    l <- length(dd$relativity)
-    avg_lr <- sum(dd$wa) / sum(dd$wc)
-    rm(dd)
-    
-    # create "Effect of Selecting Lower Relativities" graph
-    # sort the xvalues in increaseing order
-    x <- xvalues[order(xvalues)]
-    # calculate the loss ratio decrease for each xvalue
-    lr_decrease <- vector(length=length(x))
-    for (i in 1:length(x)){
-        lr_decrease[i] <- 1 - (sum(dd_sorted_asc[1:I(x[i]*l),"wa"]) / sum(dd_sorted_asc[1:I(x[i]*l), "wc"])) / avg_lr        
-    }
-
-    if(plot==TRUE)
-        {
-        windows()
-        barplot(lr_decrease*100
-            ,xlab="% Items Selected"
-            ,ylab="% Decrease in Loss Ratio"
-            ,names.arg=xvalues*100
-            ,main="Effect of Selecting Lower Relativites"
-            )
-        }
-    plot_values <- data.frame(x,lr_decrease)
-    return(plot_values)
-    }
-
-#adverse selection
-adverse_selection <- function(actual,pred_new,pred_current,weight=rep(1,length(actual)),xvalues=c(.10,.20,.35,.40,.50),policy_id=NULL,rbl=TRUE,plot=TRUE)
-    {
-       # Returns values to create Adverse Selection plot invented by Glenn Meyers
-        #     x :  plot values for the x-axis
-        #     lr_increase: The increase in loss ratio caused by competitors 
-        #          selecting lower relativities
-        #    
-        # Plots "The Effect of Competitors Selecting Lower Relativites" graph
-        #
- # Inputs:
- #  actual: a vector of actual values
- #  pred_new: a vector of predicted values
- #  pred_current: a vector of baseline predictions
- 
- # Optional Inputs:
- #   weight: a vector of weights set to a vector
- #          of 1's by default
- #   xvalues: A vector of the percent of items selected.  Plotted on the x-axis
- #   policy_id: a vector that contains policy numbers
- #       set by default to NULL
- #   rbl: TRUE if the predictions should be rebalanced
- #       to have the same average as the actual values
- #       FALSE if the predictions should not be rebalanced
- #   plot: TRUE if a plot should be produced
- #        FALSE if the plot should be surpressed
-    
-        ## run data prep code
-        # check that vectors are the same length
-        if(length(policy_id)==0){
-            if(!is_same_length(list(actual,pred_new,pred_current,weight))){
-                return("Error: Inputs are not the same length")
-            }
-        }
-        else{
-            if(!is_same_length(list(actual,pred_new,pred_current,weight,policy_id))){
-                return("Error: Inputs are not the same length")
-            }
-        }
-        
-        # rebalance predictions to match actuals if rbl is TRUE
-        if(rbl){
-            dd <- rebalance(actual,data.frame(pred_new,pred_current),weight)
-        }
-        else{
-            dd <- data.frame(actual,pred_new,pred_current,weight)
-        }
-
-        #summarize to policy level if that option is specified
-        if(length(policy_id)!=0){
-            actual <- dd$actual
-            pred_new <- dd$pred_new
-            pred_current <- dd$pred_current
-            weight <- dd$weight
-            dd <- policy_level(data.frame(actual,pred_new,pred_current),weight,policy_id)
-        }
-
-    # calculate variables from data.frame dd, then remove dd
-    dd$relativity <- dd$pred_new / dd$pred_current
-    dd$wa <- dd$actual*dd$weight 
-    dd$wc <- dd$pred_current*dd$weight
-    avg_lr <- sum(dd$wa) / sum(dd$wc)
-    l <- length(dd$relativity)
-    dd_sorted_des <- dd[order(dd$relativity,decreasing=TRUE),]
-    rm(dd)
-
-    # create "Effect of Selecting Lower Relativities" graph
-    # sort the xvalues in increaseing order
-    x <- xvalues[order(xvalues)]
-    # calculate the loss ratio decrease for each xvalue
-    lr_increase <- vector(length=length(x))
-    for (i in 1:length(x)){
-        lr_increase[i] <- (sum(dd_sorted_des[1:I((1-x[i])*l),"wa"]) / sum(dd_sorted_des[1:I((1-x[i])*l), "wc"])) / avg_lr - 1  
-    }
-        
-    if(plot==TRUE)
-        {
-        windows()
-        barplot(lr_increase*100
-            ,xlab="% Items Lost to Competition"
-            ,ylab="% Increase in Loss Ratio"
-            ,names.arg=x*100
-            ,main="Effect of Competitors Selecting Lower Relativites"
-            )
-        }
-    plot_values <- data.frame(x,lr_increase)
-    return(plot_values)
-    }
-
-#value of lift 
-value_of_lift <- function(actual,pred_new,pred_current,weight=rep(1,length(actual)),policy_id=NULL,rbl=TRUE,plot=TRUE)
-    {
-        # Returns the value of lift metric invented by Glenn Meyers
-        # he value of lift is the $ per car year value of adopting the new model
-        
- # Inputs:
- #  actual: a vector of actual values
- #  pred_new: a vector of predicted values
- #  pred_current: a vector of baseline predictions
- 
- # Optional Inputs:
- #  weight: a vector of weights set to a vector
- #          of 1's by default
- #  policy_id: a vector that contains policy numbers
- #       set by default to NULL
- #  rbl: TRUE if the predictions should be rebalanced
- #       to have the same average as the actual values
- #       FALSE if the predictions should not be rebalanced
- #  plot: TRUE if a plot should be produced
- #       FALSE if the plot should be surpressed
-    
-        ## run data prep code
-        # check that vectors are the same length
-        if(length(policy_id)==0){
-            if(!is_same_length(list(actual,pred_new,pred_current,weight))){
-                return("Error: Inputs are not the same length")
-            }
-        }
-        else{
-            if(!is_same_length(list(actual,pred_new,pred_current,weight,policy_id))){
-                return("Error: Inputs are not the same length")
-            }
-        }
-        
-        # rebalance predictions to match actuals if rbl is TRUE
-        if(rbl){
-            dd <- rebalance(actual,data.frame(pred_new,pred_current),weight)
-        }
-        else{
-            dd <- data.frame(actual,pred_new,pred_current,weight)
-        }
-
-        #summarize to policy level if that option is specified
-        if(length(policy_id)!=0){
-            actual <- dd$actual
-            pred_new <- dd$pred_new
-            pred_current <- dd$pred_current
-            weight <- dd$weight
-            dd <- policy_level(data.frame(actual,pred_new,pred_current),weight,policy_id)
-        }
-
-    # create meyers vars
-    dd$relativity <- dd$pred_new / dd$pred_current
-    risks_lost <- subset(dd,relativity < 1)
-
-    dd$wa <- dd$actual*dd$weight
-    dd$wc <- dd$pred_current*dd$weight
-
-    risks_lost$wa <- risks_lost$actual*risks_lost$weight
-    risks_lost$wc <- risks_lost$pred_current*risks_lost$weight
-    risks_lost$wp <- risks_lost$pred_new*risks_lost$weight
-
-    vol <- (sum(dd$wa) / sum(dd$wc) - sum(risks_lost$wa) / sum(risks_lost$wc)
-               )* sum(risks_lost$wc) / sum(dd$weight)
-    return(vol)
-    }
-
 
 ###############################################################################
 # Purpose: create functions for 
@@ -501,7 +91,6 @@ wmean_n_power_error <- function(actual, pred_new, n_power,
  #
  # wmean_n_power_error = sum(weight*(pred_new - actual)^n_power)/sum(weight) 
  
- 
  ## Check if actual, pred_new and weight have the same length
  if(!is_same_length(list(actual,pred_new, weight))){
   return("Error: Inputs are not the same length")
@@ -533,7 +122,6 @@ wmean_n_power_error <- function(actual, pred_new, n_power,
  ## Calculate the Weighted Mean N-power Error
  error_sq = (dd$pred_new - dd$actual)^ n_power
  return(weighted.mean(error_sq, dd$weight))
-
 }
 
 ## Pseudo R^2
@@ -976,10 +564,8 @@ AIC_BIC <- function(actual,pred_new,weight=rep(1,length(actual)), p, policy_id=N
 
     z <- c(list(AIC = AIC_value,
                 BIC = BIC_value
-           ))                                                                                                                
-                                                                                                                                              
+           ))                                                                                                                                                                                                                                                           
     z                                                                                                                                      
-                                                                                                                                            
 }
    
 #########################################
@@ -995,8 +581,7 @@ AIC_BIC <- function(actual,pred_new,weight=rep(1,length(actual)), p, policy_id=N
 #
 #########################################  
 
-# input is 4 vectors of equal length, a method option ('expsoure' or 'premium') and a boolean for plot control
-     
+# input is 4 vectors of equal length, a method option ('expsoure' or 'premium') and a boolean for plot control   
     # actual is the actualloss cost 
     # pred_new1 is the proposed loss cost predictions 
     # pred_current is the current loss cost predictions 
@@ -1013,7 +598,6 @@ AIC_BIC <- function(actual,pred_new,weight=rep(1,length(actual)), p, policy_id=N
     #         FALSE if the predictions should not be rebalanced
 
 # output is a Lorenz Curve plot, two vectors and a Gini Index
- 
 
 Lorenz_Gini <- function(actual, pred_new, pred_current=NULL, weight=rep(1,length(actual)), method="exposure", policy_id=NULL,rbl=TRUE, plot=TRUE) {    
     # Returns one scalar (Gini Index) and two vectors to plot Lorenz curve
@@ -1088,10 +672,9 @@ Lorenz_Gini <- function(actual, pred_new, pred_current=NULL, weight=rep(1,length
             dd <- policy_level(dd[,-length(dd)],weight,policy_id)
         }
 
-
-   o<-order(dd$pred_new)
+   o <- order(dd$pred_new)
    dd <- dd[o,]
-   n<- nrow(dd)+1
+   n <- nrow(dd)+1
    cumulative_actual <- c(0, cumsum(dd$actual * dd$weight) / sum(dd$actual * dd$weight)) 
 
    if (tolower(method) == 'exposure') {
@@ -1158,6 +741,271 @@ Lorenz_Gini <- function(actual, pred_new, pred_current=NULL, weight=rep(1,length
  z
 }
 
+
+
+######################################
+# Program Name: meyers.R 
+# 
+# Purpose: Recreate diagnostics from Glenn Meyer's presentations
+#
+# Data Description: Simulated Tweedie data
+#
+# References: http://www.casact.org/education/annual/2007/handouts/meyers.ppt
+#
+# Usage: See function inputs and outputs
+# selective_underwriting()
+# adverse_selection() 
+# value_of_lift()
+#
+# Requirements: lattice
+#
+######################################
+#require(lattice)
+
+selective_underwriting <- function(actual,pred_new,pred_current,weight=rep(1,length(actual)),xvalues=c(.75,.80,.85,.90,.95),policy_id=NULL,rbl=TRUE,plot=TRUE)
+    {
+     # Returns values to create Selective Underwriting plot invented by Glenn Meyers
+        #     x :  plot values for the x-axis
+        #     lr_decrease: The decrease in loss ratio caused by selecting lower relativities
+        #    
+        # Plots "The Effect of Selecting Lower Relativite" graph
+        #
+ # Inputs:
+ #  actual: a vector of actual values
+ #  pred_new: a vector of predicted values
+ #  pred_current: a vector of baseline predictions
+       
+ # Optional Inputs:
+ #  weight: a vector of weights set to a vector
+ #          of 1's by default
+ #  xvalues: A vector of the percent of items selected.  Plotted on the x-axis
+ #  policy_id: a vector that contains policy numbers
+ #       set by default to NULL
+ #  rbl: TRUE if the predictions should be rebalanced
+ #       to have the same average as the actual values
+ #       FALSE if the predictions should not be rebalanced
+ #  plot: TRUE if a plot should be produced
+ #        FALSE if the plot should be surpressed
+
+        ## run data prep code
+        # check that vectors are the same length
+        if(length(policy_id)==0){
+            if(!is_same_length(list(actual,pred_new,pred_current,weight))){
+                return("Error: Inputs are not the same length")
+            }
+        }
+        else{
+            if(!is_same_length(list(actual,pred_new,pred_current,weight,policy_id))){
+                return("Error: Inputs are not the same length")
+            }
+        }
+        
+        # rebalance predictions to match actuals if rbl is TRUE
+        if(rbl){
+            dd <- rebalance(actual,data.frame(pred_new,pred_current),weight)
+        }
+        else{
+            dd <- data.frame(actual,pred_new,pred_current,weight)
+        }
+
+        #summarize to policy level if that option is specified
+        if(length(policy_id)!=0){
+            actual <- dd$actual
+            pred_new <- dd$pred_new
+            pred_current <- dd$pred_current
+            weight <- dd$weight
+            dd <- policy_level(data.frame(actual,pred_new,pred_current),weight,policy_id)
+        }
+
+    # create meyers vars
+    dd$relativity <- dd$pred_new / dd$pred_current
+    dd$wa <- dd$actual*dd$weight 
+    dd$wc <- dd$pred_current*dd$weight
+    dd_sorted_asc <- dd[order(dd$relativity),]
+    l <- length(dd$relativity)
+    avg_lr <- sum(dd$wa) / sum(dd$wc)
+    rm(dd)
+    
+    # create "Effect of Selecting Lower Relativities" graph
+    # sort the xvalues in increaseing order
+    x <- xvalues[order(xvalues)]
+    # calculate the loss ratio decrease for each xvalue
+    lr_decrease <- vector(length=length(x))
+    for (i in 1:length(x)){
+        lr_decrease[i] <- 1 - (sum(dd_sorted_asc[1:I(x[i]*l),"wa"]) / sum(dd_sorted_asc[1:I(x[i]*l), "wc"])) / avg_lr        
+    }
+
+    if(plot==TRUE)
+        {
+        windows()
+        barplot(lr_decrease*100
+            ,xlab="% Items Selected"
+            ,ylab="% Decrease in Loss Ratio"
+            ,names.arg=xvalues*100
+            ,main="Effect of Selecting Lower Relativites"
+            )
+        }
+    plot_values <- data.frame(x,lr_decrease)
+    return(plot_values)
+    }
+
+#adverse selection
+adverse_selection <- function(actual,pred_new,pred_current,weight=rep(1,length(actual)),xvalues=c(.10,.20,.35,.40,.50),policy_id=NULL,rbl=TRUE,plot=TRUE)
+    {
+       # Returns values to create Adverse Selection plot invented by Glenn Meyers
+        #     x :  plot values for the x-axis
+        #     lr_increase: The increase in loss ratio caused by competitors 
+        #          selecting lower relativities
+        #    
+        # Plots "The Effect of Competitors Selecting Lower Relativites" graph
+        #
+ # Inputs:
+ #  actual: a vector of actual values
+ #  pred_new: a vector of predicted values
+ #  pred_current: a vector of baseline predictions
+ 
+ # Optional Inputs:
+ #   weight: a vector of weights set to a vector
+ #          of 1's by default
+ #   xvalues: A vector of the percent of items selected.  Plotted on the x-axis
+ #   policy_id: a vector that contains policy numbers
+ #       set by default to NULL
+ #   rbl: TRUE if the predictions should be rebalanced
+ #       to have the same average as the actual values
+ #       FALSE if the predictions should not be rebalanced
+ #   plot: TRUE if a plot should be produced
+ #        FALSE if the plot should be surpressed
+    
+        ## run data prep code
+        # check that vectors are the same length
+        if(length(policy_id)==0){
+            if(!is_same_length(list(actual,pred_new,pred_current,weight))){
+                return("Error: Inputs are not the same length")
+            }
+        }
+        else{
+            if(!is_same_length(list(actual,pred_new,pred_current,weight,policy_id))){
+                return("Error: Inputs are not the same length")
+            }
+        }
+        
+        # rebalance predictions to match actuals if rbl is TRUE
+        if(rbl){
+            dd <- rebalance(actual,data.frame(pred_new,pred_current),weight)
+        }
+        else{
+            dd <- data.frame(actual,pred_new,pred_current,weight)
+        }
+
+        #summarize to policy level if that option is specified
+        if(length(policy_id)!=0){
+            actual <- dd$actual
+            pred_new <- dd$pred_new
+            pred_current <- dd$pred_current
+            weight <- dd$weight
+            dd <- policy_level(data.frame(actual,pred_new,pred_current),weight,policy_id)
+        }
+
+    # calculate variables from data.frame dd, then remove dd
+    dd$relativity <- dd$pred_new / dd$pred_current
+    dd$wa <- dd$actual*dd$weight 
+    dd$wc <- dd$pred_current*dd$weight
+    avg_lr <- sum(dd$wa) / sum(dd$wc)
+    l <- length(dd$relativity)
+    dd_sorted_des <- dd[order(dd$relativity,decreasing=TRUE),]
+    rm(dd)
+
+    # create "Effect of Selecting Lower Relativities" graph
+    # sort the xvalues in increaseing order
+    x <- xvalues[order(xvalues)]
+    # calculate the loss ratio decrease for each xvalue
+    lr_increase <- vector(length=length(x))
+    for (i in 1:length(x)){
+        lr_increase[i] <- (sum(dd_sorted_des[1:I((1-x[i])*l),"wa"]) / sum(dd_sorted_des[1:I((1-x[i])*l), "wc"])) / avg_lr - 1  
+    }
+        
+    if(plot==TRUE)
+        {
+        windows()
+        barplot(lr_increase*100
+            ,xlab="% Items Lost to Competition"
+            ,ylab="% Increase in Loss Ratio"
+            ,names.arg=x*100
+            ,main="Effect of Competitors Selecting Lower Relativites"
+            )
+        }
+    plot_values <- data.frame(x,lr_increase)
+    return(plot_values)
+    }
+
+#value of lift 
+value_of_lift <- function(actual,pred_new,pred_current,weight=rep(1,length(actual)),policy_id=NULL,rbl=TRUE,plot=TRUE)
+    {
+        # Returns the value of lift metric invented by Glenn Meyers
+        # he value of lift is the $ per car year value of adopting the new model
+        
+ # Inputs:
+ #  actual: a vector of actual values
+ #  pred_new: a vector of predicted values
+ #  pred_current: a vector of baseline predictions
+ 
+ # Optional Inputs:
+ #  weight: a vector of weights set to a vector
+ #          of 1's by default
+ #  policy_id: a vector that contains policy numbers
+ #       set by default to NULL
+ #  rbl: TRUE if the predictions should be rebalanced
+ #       to have the same average as the actual values
+ #       FALSE if the predictions should not be rebalanced
+ #  plot: TRUE if a plot should be produced
+ #       FALSE if the plot should be surpressed
+    
+        ## run data prep code
+        # check that vectors are the same length
+        if(length(policy_id)==0){
+            if(!is_same_length(list(actual,pred_new,pred_current,weight))){
+                return("Error: Inputs are not the same length")
+            }
+        }
+        else{
+            if(!is_same_length(list(actual,pred_new,pred_current,weight,policy_id))){
+                return("Error: Inputs are not the same length")
+            }
+        }
+        
+        # rebalance predictions to match actuals if rbl is TRUE
+        if(rbl){
+            dd <- rebalance(actual,data.frame(pred_new,pred_current),weight)
+        }
+        else{
+            dd <- data.frame(actual,pred_new,pred_current,weight)
+        }
+
+        #summarize to policy level if that option is specified
+        if(length(policy_id)!=0){
+            actual <- dd$actual
+            pred_new <- dd$pred_new
+            pred_current <- dd$pred_current
+            weight <- dd$weight
+            dd <- policy_level(data.frame(actual,pred_new,pred_current),weight,policy_id)
+        }
+
+    # create meyers vars
+    dd$relativity <- dd$pred_new / dd$pred_current
+    risks_lost <- subset(dd,relativity < 1)
+
+    dd$wa <- dd$actual*dd$weight
+    dd$wc <- dd$pred_current*dd$weight
+
+    risks_lost$wa <- risks_lost$actual*risks_lost$weight
+    risks_lost$wc <- risks_lost$pred_current*risks_lost$weight
+    risks_lost$wp <- risks_lost$pred_new*risks_lost$weight
+
+    vol <- (sum(dd$wa) / sum(dd$wc) - sum(risks_lost$wa) / sum(risks_lost$wc)
+               )* sum(risks_lost$wc) / sum(dd$weight)
+    return(vol)
+    }
+
   
 ###############################################################################
 # Purpose: create functions  
@@ -1170,7 +1018,6 @@ Lorenz_Gini <- function(actual, pred_new, pred_current=NULL, weight=rep(1,length
 # * Percentage Error
 # 
 ###############################################################################
- 
 
 rs_wmse <- function(actual, pred_new, 
   weight = rep(1, length(actual)), n_sample = length(actual), 
@@ -1275,7 +1122,6 @@ rs_wmean_n_power_error <- function(actual, pred_new, n_power,
  #      FALSE if the plot should be surpressed
  #
  # wmean_n_power_error = sum(weight*(pred_new - actual)^n_power)/sum(weight) 
- 
  
  ## Check if actual, pred_new and weight have the same length
  if(!is_same_length(list(actual,pred_new, weight))){
@@ -1915,8 +1761,155 @@ rs_lorenz_gini  <- function(actual, pred_new, pred_current, method = "exposure",
  
  return(gini)
 }
+
+########################################
+# Program Name:   twoWayLift.R
+# Project Name:   Loss Cost Diagnostics
+# 
+# Purpose: Create two way Lift Charts
+#
+# Data Description: Simulated Tweedie data
+#
+# References:  
+#
+# Usage: See function inputs and outputs 
+########################################
+# input is 4 vectors of equal length, number of tiles and a boolean
+    # actual is the observed loss costs
+    # pred_new1 is the proposed loss cost predictions based on model 1
+    # pred_new2 is the proposed loss cost predictions based on model 2
+    # weight is exposures, default to 1
+    # tile is number of tiles requested
+    # plot is TRUE of FALSE
+    
+    # Optional Inputs:
+    #    policy_id: a vector that contains policy numbers
+    #                set by default to NULL
+    #    rbl: TRUE if the predictions should be rebalanced
+    #               to have the same average as the actual values
+    #         FALSE if the predictions should not be rebalanced
+
+# output is a two-waylift chart plot and a data frame of lift curve values
+
+two_way_lift <- function(actual,pred_new1, pred_new2, weight = rep(1,length(actual)), tile = 10, policy_id=NULL, rbl=TRUE, plot=TRUE) { 
+    # Returns a data frame of lift curves values
+    # 
+    # Inputs: 
+    #  actual: a vector of actual values
+    #  pred_new1: a vector of predicted values based on model 1
+    #  pred_new2: a vector of predicted values based on model 2
+    #  weight: a vector of weights, default to 1
+    #  tile: number of tiles requested
+    
+    # Optional Inputs:
+    #    policy_id: a vector that contains policy numbers
+    #                set by default to NULL
+    #    rbl: TRUE if the predictions should be rebalanced
+    #         to have the same average as the actual values
+    #         FALSE if the predictions should not be rebalanced
+
+        ## run data prep code
+        # check that vectors are the same length
+        if(length(policy_id)==0){
+            if(!is_same_length(list(actual,pred_new1,pred_new2,weight))){
+                return("Error: Inputs are not the same length")
+            }
+        }
+        else{
+            if(!is_same_length(list(actual,pred_new1,pred_new2,weight,policy_id))){
+                return("Error: Inputs are not the same length")
+            }
+        }
+        
+        # rebalance predictions to match actuals if rbl is TRUE
+        if(rbl){
+            dd <- rebalance(actual,data.frame(pred_new1,pred_new2),weight)
+        }
+        else{
+            dd <- data.frame(actual,pred_new1,pred_new2,weight)
+        }
+
+        #summarize to policy level if that option is specified
+        if(length(policy_id)!=0){
+            actual <- dd$actual
+            pred_new1 <- dd$pred_new1
+            pred_new2 <- dd$pred_new2
+            weight <- dd$weight
+            dd <- policy_level(data.frame(actual,pred_new1,pred_new2),weight,policy_id)
+        }
+ 
+    dd$ratio <- dd$pred_new1 / dd$pred_new2
+
+    o<- order(dd$ratio)
+
+    dd<-dd[o,]
+
+    n = nrow(dd)
+
+    dd$cumsum <- cumsum(dd$weight)
+    tiles <- ceiling((dd$cumsum / dd$cumsum[n]) * tile)
+   
+   #take care of unassigned last decile due to rounding issue
+   if (tiles[n] == 0) {
+           tiles[n]=tile
+    }
+
+   dd$tiles<- tiles
+
+   ddx <- split(dd, dd$tiles)
+ 
+   m_1 <- sapply(ddx, function(z) weighted.mean(z$pred_new1, w = z$weight))
+   m_2 <- sapply(ddx, function(z) weighted.mean(z$pred_new2, w = z$weight)) 
+   m   <- sapply(ddx, function(z) weighted.mean(z$actual,w = z$weight))
+ 
+
+   theory_pred_new1 <- (m / m_1)  
+   theory_pred_new2 <- (m / m_2)
+
+   mean1 <- mean(theory_pred_new1)
+   mean2 <- mean(theory_pred_new2)
+
+   theory_pred_new1 <-  theory_pred_new1 / mean1 
+   theory_pred_new2 <-  theory_pred_new2 / mean2
+
+   #abs_dist_pred1 <- abs(theory_pred_new1 - 1)
+   #abs_dist_pred2 <- abs(theory_pred_new2 - 1)
+   #sqr_dist_pred1 <- (theory_pred_new1 - 1) ^ 2
+   #sqr_dist_pred2 <- (theory_pred_new2 - 1) ^ 2
+
+   pct<-seq(1:tile)
+
+   if(plot==TRUE)
+       { 
+       windows()
+       plot(pct, theory_pred_new2, xlim = c(1,tile), 
+                           ylim=c(0,max(theory_pred_new1, theory_pred_new2) ), 
+                           xlab= 'Decile',
+                           ylab= 'LR Relativity', 
+                           main = 'Two way lift chart: Model 1 vs. Model 2',
+                           type="n",
+       lab=c(10,5,7)
+     )
+       abline(h=1)
+       lines(pct, theory_pred_new1, lty =1, lwd=1, col='blue')
+       lines(pct, theory_pred_new2, lty =2, lwd=2, col='red')
+       legend.txt <- c('Model 1', 'Model2')
+       legend("topleft", legend= legend.txt, 
+           col = c(1,2),
+           lty = c(1,2),
+           lwd = c(1,2),
+           bty = "o", cex = 0.8)
+       }
+
+    lrr1 <- theory_pred_new1
+    lrr2 <- theory_pred_new2
+    plot_values <- data.frame(pct,lrr1,lrr2)
+    return(plot_values)
+ 
+}
+
 ###########################################################
-# Helper Functions 
+# Other Helper Functions 
 #
 #check vector lengths
 is_same_length <- function(list_of_vectors){
