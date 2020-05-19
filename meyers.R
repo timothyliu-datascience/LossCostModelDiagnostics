@@ -197,7 +197,7 @@ adverse_selection <- function(actual,pred_new,pred_current,weight=rep(1,length(a
 value_of_lift <- function(actual,pred_new,pred_current,weight=rep(1,length(actual)),policy_id=NULL,rbl=TRUE,plot=TRUE)
     {
         # Returns the value of lift metric invented by Glenn Meyers
-        # he value of lift is the $ per car year value of adopting the new model
+        # The value of lift is the $ per car year value of adopting the new model
         
  # Inputs:
  #  actual: a vector of actual values
@@ -265,8 +265,7 @@ value_of_lift <- function(actual,pred_new,pred_current,weight=rep(1,length(actua
 rs_lorenz_gini  <- function(actual, pred_new, pred_current, method = "exposure",
   weight = rep(1, length(actual)), n_sample = length(actual), 
   n_iter = 250, policy_id=NULL, rbl = TRUE, plot = TRUE){
- # Returns a vector of the Gini index from random samples of 
- # the data set.
+ # Returns a vector of the Gini index from random samples of the data set.
  # 
  # Inputs:
  #  actual: a vector of actual values
