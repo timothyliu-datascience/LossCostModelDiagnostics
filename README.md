@@ -12,7 +12,7 @@ Metrics include -
 * AIC
 * BIC
 * Gini Index
-* value of lift 
+* Value of Lift 
 
 Also producing diagnostics charts including -
 * Lorenz Curve
