@@ -23,7 +23,7 @@ selective_underwriting <- function(actual,pred_new,pred_current,weight=rep(1,len
         #     x :  plot values for the x-axis
         #     lr_decrease: The decrease in loss ratio caused by selecting lower relativities
         #    
-        # Plots "The Effect of Selecting Lower Relativite" graph
+        # Plots "The Effect of Selecting Lower Relativities" graph
         #
  # Inputs:
  #  actual: a vector of actual values
@@ -112,7 +112,7 @@ adverse_selection <- function(actual,pred_new,pred_current,weight=rep(1,length(a
         #     lr_increase: The increase in loss ratio caused by competitors 
         #          selecting lower relativities
         #    
-        # Plots "The Effect of Competitors Selecting Lower Relativites" graph
+        # Plots "The Effect of Selecting Lower Relativities" graph
         #
  # Inputs:
  #  actual: a vector of actual values
