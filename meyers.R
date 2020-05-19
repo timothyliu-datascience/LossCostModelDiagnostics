@@ -186,7 +186,7 @@ adverse_selection <- function(actual,pred_new,pred_current,weight=rep(1,length(a
             ,xlab="% Items Lost to Competition"
             ,ylab="% Increase in Loss Ratio"
             ,names.arg=x*100
-            ,main="Effect of Competitors Selecting Lower Relativites"
+            ,main="Effect of Competitors Selecting Lower Relativities"
             )
         }
     plot_values <- data.frame(x,lr_increase)
